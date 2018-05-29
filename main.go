@@ -46,7 +46,24 @@ func main() {
 	}
 
 	if setEc2Tag {
-		writeTag(identity.InstanceID, "Name", *hostname)
+		svc := ec2.New(session.New())
+
+		input := &ec2.CreateTagsInput{
+			Resources: []*string{
+				aws.String(identity.InstanceID),
+			},
+			Tags: []*ec2.Tag{
+				{
+					Key:   aws.String("Name"),
+					Value: aws.String(*hostname),
+				},
+			},
+		}
+
+		_, err := svc.CreateTags(input)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	if setHostname {
