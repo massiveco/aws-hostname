@@ -14,7 +14,7 @@ func GenerateHostname(instance ec2.Instance) (*string, error) {
 
 	tags := tagsToMap(instance.Tags)
 
-	hostname := tags["HostnamePrefix"] + hashedPrivateIP
+	hostname := tags["massive:HostnamePrefix"] + hashedPrivateIP
 
 	return &hostname, nil
 }
