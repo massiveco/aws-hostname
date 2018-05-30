@@ -4,13 +4,13 @@ import (
 	"flag"
 	"io/ioutil"
 	"log"
-	"strings"
 	"syscall"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/massiveco/aws-hostname/identity"
 )
 
 const hostnamePath = "/etc/hostname"
@@ -30,7 +30,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	hostname, err := GenerateHostname(*instance)
+	hostname, err := identity.GenerateHostname(*instance)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -98,29 +98,4 @@ func getInstance() (*ec2.Instance, error) {
 		return describedInstances.Reservations[0].Instances[0], nil
 	}
 	return nil, nil
-}
-
-// GenerateHostname Generates a hostname from the ec2.Instance and tags
-func GenerateHostname(instance ec2.Instance) (*string, error) {
-
-	privateIP := instance.PrivateIpAddress
-	hashedPrivateIP := strings.Replace(*privateIP, ".", "-", 10)
-
-	tags := tagsToMap(instance.Tags)
-
-	hostname := tags["HostnamePrefix"] + hashedPrivateIP
-
-	return &hostname, nil
-}
-
-func tagsToMap(tags []*ec2.Tag) map[string]string {
-
-	tagMap := make(map[string]string)
-
-	for _, element := range tags {
-		var el = *element
-		tagMap[*el.Key] = *el.Value
-	}
-
-	return tagMap
 }
