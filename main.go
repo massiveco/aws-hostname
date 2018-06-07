@@ -4,22 +4,25 @@ import (
 	"flag"
 	"io/ioutil"
 	"log"
+	"strings"
 	"syscall"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go/service/route53"
 	"github.com/massiveco/aws-hostname/identity"
 )
 
 const hostnamePath = "/etc/hostname"
 
 var ec2TagName string
-var setEc2Tag, writeToDisk, setHostname bool
+var setEc2Tag, writeToDisk, setHostname, writeToRoute53 bool
 
 func main() {
 	flag.BoolVar(&writeToDisk, "write-disk", true, "Instruct aws-hostname to write the generated hostname to disk")
+	flag.BoolVar(&writeToRoute53, "write-route53", true, "Instruct aws-hostname to write the generated hostname to a Route53 A record")
 	flag.BoolVar(&setEc2Tag, "write-tag", true, "Instruct aws-hostname to write the generated hostname to an Ec2 instance tag")
 	flag.BoolVar(&setHostname, "apply", true, "Instruct aws-hostname to syscall.Sethostname")
 	flag.StringVar(&ec2TagName, "tag", "Name", "Which tag to write the hostname to")
@@ -71,6 +74,31 @@ func main() {
 		}
 	}
 
+	if writeToRoute53 {
+		zoneID := extractTag("massive:DNS-SD:Route53:zone", instance.Tags)
+		r53 := route53.New(session.New())
+		zone, err := r53.GetHostedZone(&route53.GetHostedZoneInput{Id: zoneID})
+		if err != nil {
+			log.Fatal(err)
+		}
+		fqdn := strings.Join([]string{*hostname, *zone.HostedZone.Name}, ".")
+
+		_, err = r53.ChangeResourceRecordSets(&route53.ChangeResourceRecordSetsInput{
+			ChangeBatch: &route53.ChangeBatch{
+				Changes: []*route53.Change{{
+					Action: aws.String("UPSERT"),
+					ResourceRecordSet: &route53.ResourceRecordSet{
+						Name:            aws.String(fqdn),
+						Type:            aws.String("A"),
+						ResourceRecords: []*route53.ResourceRecord{&route53.ResourceRecord{Value: aws.String(*instance.PrivateIpAddress)}},
+						TTL:             aws.Int64(60),
+					},
+				}},
+			},
+			HostedZoneId: aws.String(*zoneID),
+		})
+	}
+
 	log.Printf("Set hostname to: %s", *hostname)
 }
 
@@ -98,4 +126,15 @@ func getInstance() (*ec2.Instance, error) {
 		return describedInstances.Reservations[0].Instances[0], nil
 	}
 	return nil, nil
+}
+
+func extractTag(tagName string, tags []*ec2.Tag) *string {
+
+	for _, tag := range tags {
+		if *tag.Key == tagName {
+			return tag.Value
+		}
+	}
+
+	return nil
 }
